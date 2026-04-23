@@ -346,8 +346,8 @@
 
   <div class="container">
 
-    <form name="community-questionnaire" method="POST" data-netlify="true">
-      <!-- Hidden inputs for Netlify bot to recognize fields -->
+    <form name="community-questionnaire" onsubmit="event.preventDefault(); alert('Brief submitted successfully! Our team will review your answers.');">
+      <!-- Hidden inputs for Netlify bot to recognize fields (keeping them just in case, but disabled form handling) -->
       <input type="hidden" name="questionnaire-answer-0" value="">
       <input type="hidden" name="questionnaire-answer-1" value="">
       <input type="hidden" name="questionnaire-answer-2" value="">
@@ -658,12 +658,21 @@
           e.preventDefault();
           const val = editor.querySelector('textarea').value.trim();
           if (!val) return;
-          if (ans.id) {
-            await sb.from('questionnaire_answers').update({ answer_text: val }).eq('id', ans.id);
+          
+          saveBtn.disabled = true;
+          saveBtn.textContent = 'Saving...';
+          
+          const { error } = ans.id 
+            ? await sb.from('questionnaire_answers').update({ answer_text: val }).eq('id', ans.id)
+            : await sb.from('questionnaire_answers').insert({ question_id: ans.question_id, answer_text: val });
+          
+          if (error) {
+            alert('Error saving to Supabase: ' + error.message);
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save';
           } else {
-            await sb.from('questionnaire_answers').insert({ question_id: ans.question_id, answer_text: val });
+            await refreshAll();
           }
-          refreshAll();
         };
 
         const cancelBtn = document.createElement('button');
@@ -688,7 +697,11 @@
 
     const refreshAll = async () => {
       if (!sb) return;
-      const { data } = await sb.from('questionnaire_answers').select('*');
+      const { data, error } = await sb.from('questionnaire_answers').select('*');
+      if (error) {
+        console.error('Refresh error:', error.message);
+        return; // Don't clear UI if request failed
+      }
       if (data) {
         const grouped = data.reduce((acc, r) => { (acc[r.question_id] = acc[r.question_id] || []).push(r); return acc; }, {});
         Object.keys(questionSections).forEach(id => questionSections[id].sync(grouped[id] || []));
