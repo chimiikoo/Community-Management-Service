@@ -584,183 +584,166 @@
     const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     document.addEventListener('DOMContentLoaded', async () => {
-      const questions = document.querySelectorAll('.question-block');
-      const statusDot = document.createElement('div');
+    const questions = document.querySelectorAll('.question-block');
+    const statusDot = document.createElement('div');
 
-      // Add a small status indicator
-      Object.assign(statusDot.style, {
-        position: 'fixed', bottom: '20px', right: '20px', width: '10px', height: '10px',
-        borderRadius: '50%', background: '#ff4b4b', zIndex: '1000', transition: 'background 0.3s'
-      });
-      document.body.appendChild(statusDot);
+    // Add a small status indicator
+    Object.assign(statusDot.style, {
+      position: 'fixed', bottom: '20px', right: '20px', width: '10px', height: '10px',
+      borderRadius: '50%', background: '#ff4b4b', zIndex: '1000', transition: 'background 0.3s'
+    });
+    document.body.appendChild(statusDot);
 
-      // Initial check and subscription
-      const checkConnection = async () => {
-        const { error } = await supabase.from('questionnaire_answers').select('id').limit(1);
-        statusDot.style.background = error ? '#ff4b4b' : '#00ff88';
-        if (error) console.error('Supabase connection error:', error.message);
-      };
-      checkConnection();
+    // Initial check and subscription
+    const checkConnection = async () => {
+      const { error } = await supabase.from('questionnaire_answers').select('id').limit(1);
+      statusDot.style.background = error ? '#ff4b4b' : '#00ff88';
+      if (error) console.error('Supabase connection error:', error.message);
+    };
+    checkConnection();
 
-      // Store all render functions to call them when real-time updates arrive
-      const questionControllers = {};
+    // Store all question containers to update them via real-time
+    const questionSections = {};
 
-      questions.forEach((block, index) => {
-        const qId = `questionnaire-answer-${index}`;
-        const answerSection = document.createElement('div');
-        answerSection.className = 'answer-section';
-        block.appendChild(answerSection);
+    questions.forEach((block, index) => {
+      const qId = `questionnaire-answer-${index}`;
+      const answerSection = document.createElement('div');
+      answerSection.className = 'answer-section';
+      answerSection.style.display = 'flex';
+      answerSection.style.flexDirection = 'column';
+      answerSection.style.gap = '16px';
+      block.appendChild(answerSection);
+      
+      questionSections[qId] = answerSection;
 
-        let currentAnswer = '';
+      let answers = [];
 
-        const render = () => {
-          answerSection.innerHTML = '';
-          if (currentAnswer) {
-            const displayDiv = document.createElement('div');
-            displayDiv.className = 'answer-display';
-            const textDiv = document.createElement('div');
-            textDiv.className = 'answer-text';
-            textDiv.textContent = currentAnswer;
-
-            const actionsDiv = document.createElement('div');
-            actionsDiv.className = 'answer-actions';
-
-            const editBtn = document.createElement('button');
-            editBtn.className = 'btn';
-            editBtn.textContent = 'Edit';
-            editBtn.onclick = () => renderEditor(currentAnswer);
-
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'btn btn-danger';
-            deleteBtn.textContent = 'Delete';
-            deleteBtn.onclick = async () => {
-              if (confirm('Are you sure you want to delete this answer?')) {
-                const { error } = await supabase.from('questionnaire_answers').delete().eq('id', qId);
-                if (!error) {
-                  currentAnswer = '';
-                  render();
-                }
-              }
-            };
-
-            actionsDiv.appendChild(editBtn);
-            actionsDiv.appendChild(deleteBtn);
-            displayDiv.appendChild(textDiv);
-            displayDiv.appendChild(actionsDiv);
-            answerSection.appendChild(displayDiv);
-          } else {
-            const addBtn = document.createElement('button');
-            addBtn.className = 'btn btn-primary';
-            addBtn.textContent = '+ Add Answer';
-            addBtn.onclick = () => renderEditor('');
-            answerSection.appendChild(addBtn);
-          }
-        };
-
-        const renderEditor = (text) => {
-          answerSection.innerHTML = '';
-          const editorDiv = document.createElement('div');
-          editorDiv.className = 'answer-editor';
-          const textarea = document.createElement('textarea');
-          textarea.className = 'answer-input';
-          textarea.value = text;
-          textarea.placeholder = 'Type your answer here...';
+      const render = () => {
+        answerSection.innerHTML = '';
+        
+        // Render existing answers
+        answers.sort((a, b) => new Date(a.created_at) - new Date(b.created_at)).forEach(ans => {
+          const ansWrapper = document.createElement('div');
+          ansWrapper.className = 'answer-display';
+          
+          const textDiv = document.createElement('div');
+          textDiv.className = 'answer-text';
+          textDiv.textContent = ans.answer_text;
 
           const actionsDiv = document.createElement('div');
           actionsDiv.className = 'answer-actions';
 
-          const saveBtn = document.createElement('button');
-          saveBtn.className = 'btn btn-primary';
-          saveBtn.textContent = 'Save';
-          saveBtn.onclick = async () => {
-            const val = textarea.value.trim();
-            if (val) {
-              const { error } = await supabase.from('questionnaire_answers').upsert({ id: qId, answer_text: val, updated_at: new Date() });
-              if (!error) {
-                currentAnswer = val;
-                render();
-              } else {
-                alert('Error saving to database: ' + error.message);
-              }
-            } else {
-              await supabase.from('questionnaire_answers').delete().eq('id', qId);
-              currentAnswer = '';
-              render();
+          const editBtn = document.createElement('button');
+          editBtn.className = 'btn';
+          editBtn.textContent = 'Edit';
+          editBtn.onclick = () => renderEditor(ansWrapper, ans);
+
+          const deleteBtn = document.createElement('button');
+          deleteBtn.className = 'btn btn-danger';
+          deleteBtn.textContent = 'Delete';
+          deleteBtn.onclick = async () => {
+            if (confirm('Are you sure you want to delete this answer?')) {
+              await supabase.from('questionnaire_answers').delete().eq('id', ans.id);
             }
           };
 
-          const cancelBtn = document.createElement('button');
-          cancelBtn.className = 'btn';
-          cancelBtn.textContent = 'Cancel';
-          cancelBtn.onclick = () => render();
+          actionsDiv.appendChild(editBtn);
+          actionsDiv.appendChild(deleteBtn);
+          ansWrapper.appendChild(textDiv);
+          ansWrapper.appendChild(actionsDiv);
+          answerSection.appendChild(ansWrapper);
+        });
 
-          actionsDiv.appendChild(saveBtn);
-          actionsDiv.appendChild(cancelBtn);
-          editorDiv.appendChild(textarea);
-          editorDiv.appendChild(actionsDiv);
+        // "Add Answer" button at the bottom of the list
+        const addBtn = document.createElement('button');
+        addBtn.className = 'btn btn-primary';
+        addBtn.style.alignSelf = 'flex-start';
+        addBtn.textContent = answers.length > 0 ? '+ Add another answer' : '+ Add Answer';
+        addBtn.onclick = () => renderEditor(null, { question_id: qId, answer_text: '' });
+        answerSection.appendChild(addBtn);
+      };
+
+      const renderEditor = (container, ans) => {
+        const editorDiv = document.createElement('div');
+        editorDiv.className = 'answer-editor';
+        const textarea = document.createElement('textarea');
+        textarea.className = 'answer-input';
+        textarea.value = ans.answer_text;
+        textarea.placeholder = 'Type your answer here...';
+
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'answer-actions';
+
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'btn btn-primary';
+        saveBtn.textContent = 'Save';
+        saveBtn.onclick = async () => {
+          const val = textarea.value.trim();
+          if (!val) return;
+
+          if (ans.id) {
+            await supabase.from('questionnaire_answers').update({ answer_text: val }).eq('id', ans.id);
+          } else {
+            await supabase.from('questionnaire_answers').insert({ 
+              question_id: ans.question_id, 
+              answer_text: val 
+            });
+          }
+        };
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'btn';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.onclick = () => render();
+
+        actionsDiv.appendChild(saveBtn);
+        actionsDiv.appendChild(cancelBtn);
+        editorDiv.appendChild(textarea);
+        editorDiv.appendChild(actionsDiv);
+
+        if (container) {
+          container.innerHTML = '';
+          container.appendChild(editorDiv);
+        } else {
+          answerSection.lastChild.remove();
           answerSection.appendChild(editorDiv);
-          textarea.focus();
-          textarea.selectionStart = textarea.value.length;
-        };
+        }
+        
+        textarea.focus();
+        textarea.selectionStart = textarea.value.length;
+      };
 
-        questionControllers[qId] = {
-          update: (newVal) => {
-            currentAnswer = newVal;
-            render();
-          }
-        };
-      });
+      questionSections[qId].sync = (newAnswers) => {
+        answers = newAnswers;
+        render();
+      };
+      
+      render();
+    });
 
-      // Fetch all existing answers
-      const { data: initialData } = await supabase.from('questionnaire_answers').select('*');
-      if (initialData) {
-        initialData.forEach(row => {
-          if (questionControllers[row.id]) {
-            questionControllers[row.id].update(row.answer_text);
-          }
+    const refreshAll = async () => {
+      const { data } = await supabase.from('questionnaire_answers').select('*');
+      if (data) {
+        const grouped = data.reduce((acc, row) => {
+          if (!acc[row.question_id]) acc[row.question_id] = [];
+          acc[row.question_id].push(row);
+          return acc;
+        }, {});
+
+        Object.keys(questionSections).forEach(qId => {
+          questionSections[qId].sync(grouped[qId] || []);
         });
       }
+    };
 
-      // Subscribe to real-time updates
-      supabase
-        .channel('public:questionnaire_answers')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'questionnaire_answers' }, payload => {
-          const row = payload.new || payload.old;
-          if (row && questionControllers[row.id]) {
-            const newVal = payload.eventType === 'DELETE' ? '' : row.answer_text;
-            questionControllers[row.id].update(newVal);
-          }
-        })
-        .subscribe();
+    await refreshAll();
 
-      // Initial render for empty questions
-      Object.values(questionControllers).forEach(ctrl => {
-        // If no initial data was found for this ID, it will just render the 'Add Answer' button
-        if (!initialData || !initialData.find(d => d.id === ctrl.qId)) {
-          // We need to trigger the initial render. 
-          // Let's call the controller with the current (empty) state.
-        }
-      });
-
-      // Final pass to ensure all questions are rendered even if empty
-      questions.forEach((block, index) => {
-        const qId = `questionnaire-answer-${index}`;
-        if (questionControllers[qId]) {
-          // The initial data loop handled existing, but we need to call render for the rest
-          // The current logic in the loop already triggers render indirectly via initialData.
-          // Let's add an explicit initial render call in the loop above.
-        }
-      });
-
-      // Re-rendering everything that didn't have data
-      questions.forEach((block, index) => {
-        const qId = `questionnaire-answer-${index}`;
-        // Check if it's already rendered (has content)
-        if (block.querySelector('.answer-section').innerHTML === '') {
-          // This is a bit hacky, let's just make sure the loop above handles it.
-          // (Self-correction: I'll move the initial render() call into the loop)
-        }
-      });
+    supabase
+      .channel('public:questionnaire_answers')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'questionnaire_answers' }, () => {
+        refreshAll();
+      })
+      .subscribe();
     });
   </script>
 
